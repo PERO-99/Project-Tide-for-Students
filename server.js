@@ -24,8 +24,9 @@ const path = require('path');
   }
 })();
 
+// Bind to 0.0.0.0 by default to ensure compatibility with Render, Docker, and containerized hosts
 const PORT = parseInt(process.env.PORT || '3000', 10);
-const HOST = process.env.HOST || 'localhost';
+const HOST = process.env.HOST || '0.0.0.0';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -48,6 +49,21 @@ const MIME_TYPES = {
 const server = http.createServer((req, res) => {
   let reqPath = decodeURI(req.url.split('?')[0]);
 
+  // Health check endpoint for Render, Kubernetes, and uptime probes
+  if (reqPath === '/healthz' || reqPath === '/health') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store'
+    });
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'tide-student-dashboard',
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString()
+    }));
+    return;
+  }
+
   // Safe client configuration API (Only public/publishable credentials exposed)
   if (reqPath === '/api/config') {
     res.writeHead(200, {
@@ -61,8 +77,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Root mapping: default to index.html or Tide.html
   if (reqPath === '/' || reqPath === '') {
-    reqPath = '/Tide.html';
+    reqPath = fs.existsSync(path.join(__dirname, 'index.html')) ? '/index.html' : '/Tide.html';
   }
 
   const normalizedPath = path.normalize(reqPath).replace(/^(\.\.[/\\])+/, '');
@@ -76,9 +93,12 @@ const server = http.createServer((req, res) => {
   }
 
   fs.stat(filePath, (err, stats) => {
+    const defaultFile = fs.existsSync(path.join(__dirname, 'index.html'))
+      ? path.join(__dirname, 'index.html')
+      : path.join(__dirname, 'Tide.html');
+
     if (err) {
-      // Fallback to Tide.html
-      const defaultFile = path.join(__dirname, 'Tide.html');
+      // Fallback to default index/Tide html
       fs.readFile(defaultFile, (fallbackErr, data) => {
         if (fallbackErr) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -93,7 +113,7 @@ const server = http.createServer((req, res) => {
 
     let targetFile = filePath;
     if (stats.isDirectory()) {
-      targetFile = path.join(filePath, 'Tide.html');
+      targetFile = defaultFile;
     }
 
     const ext = path.extname(targetFile).toLowerCase();
@@ -110,9 +130,28 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
   console.log(`\n========================================`);
-  console.log(`🚀 Server listening on host ${HOST}`);
-  console.log(`👉 Local:   http://${HOST}:${PORT}`);
-  console.log(`👉 Tide:    http://${HOST}:${PORT}/Tide.html`);
+  console.log(`🌊 Project Tide - Student Dashboard Server`);
+  console.log(`🚀 Listening on:  http://${displayHost}:${PORT}`);
+  console.log(`🩺 Health check:   http://${displayHost}:${PORT}/healthz`);
+  console.log(`⚙️  API Config:    http://${displayHost}:${PORT}/api/config`);
   console.log(`========================================\n`);
 });
+
+// Graceful shutdown on SIGTERM / SIGINT
+const handleShutdown = (signal) => {
+  console.log(`\n[${signal}] Initiating graceful shutdown...`);
+  server.close(() => {
+    console.log('HTTP server closed cleanly.');
+    process.exit(0);
+  });
+  // Force shutdown if taking longer than 5 seconds
+  setTimeout(() => {
+    console.error('Forced shutdown due to timeout.');
+    process.exit(1);
+  }, 5000);
+};
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));

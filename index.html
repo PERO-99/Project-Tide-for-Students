@@ -1425,6 +1425,32 @@
     if (!S.supabase.url) S.supabase.url = DEFAULT_SB_URL;
     if (!S.supabase.anonKey) S.supabase.anonKey = DEFAULT_SB_KEY;
 
+    // Auto-sync configuration from server if deployed on Render/Node.js host
+    try {
+      if (typeof fetch === 'function') {
+        fetch('/api/config')
+          .then(r => r.ok ? r.json() : null)
+          .then(cfg => {
+            if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
+              let updated = false;
+              if (!S.supabase.url || S.supabase.url === DEFAULT_SB_URL) {
+                S.supabase.url = cfg.supabaseUrl;
+                updated = true;
+              }
+              if (!S.supabase.anonKey || S.supabase.anonKey === DEFAULT_SB_KEY) {
+                S.supabase.anonKey = cfg.supabaseAnonKey;
+                updated = true;
+              }
+              if (updated) {
+                CloudBackend.init();
+                save();
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (e) {}
+
     const save = () => {
       try {
         const { ev, ...o } = S;
