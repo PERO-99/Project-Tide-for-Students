@@ -169,7 +169,6 @@ The lightweight built-in HTTP server (`server.js`) exposes the following endpoin
 
 ```text
 ├── index.html            # Primary application entry point (Render static & web root)
-├── Tide.html             # Application markup, styling & client logic
 ├── server.js             # Zero-dependency Node.js HTTP server (Render web service)
 ├── render.yaml           # Render Blueprint for automated 1-click cloud deployment
 ├── package.json          # Project metadata, engine versions & npm scripts

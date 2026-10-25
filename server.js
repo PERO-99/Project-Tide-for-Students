@@ -77,9 +77,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Root mapping: default to index.html or Tide.html
-  if (reqPath === '/' || reqPath === '') {
-    reqPath = fs.existsSync(path.join(__dirname, 'index.html')) ? '/index.html' : '/Tide.html';
+  // Route root or legacy /Tide.html requests to index.html
+  if (reqPath === '/' || reqPath === '' || reqPath === '/Tide.html') {
+    reqPath = '/index.html';
   }
 
   const normalizedPath = path.normalize(reqPath).replace(/^(\.\.[/\\])+/, '');
@@ -93,12 +93,9 @@ const server = http.createServer((req, res) => {
   }
 
   fs.stat(filePath, (err, stats) => {
-    const defaultFile = fs.existsSync(path.join(__dirname, 'index.html'))
-      ? path.join(__dirname, 'index.html')
-      : path.join(__dirname, 'Tide.html');
+    const defaultFile = path.join(__dirname, 'index.html');
 
     if (err) {
-      // Fallback to default index/Tide html
       fs.readFile(defaultFile, (fallbackErr, data) => {
         if (fallbackErr) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
