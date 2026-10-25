@@ -1,0 +1,10 @@
+{
+  "name": "tide-app",
+  "version": "1.0.0",
+  "description": "Tide web application hosted on localhost",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}
