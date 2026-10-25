@@ -1160,13 +1160,18 @@
     let demoCompletedAndDismissed = false;
 
     /* SUPABASE BACKEND CONTROLLER */
+    const DEFAULT_SB_URL = 'https://urgoewkatpxpccbixbwn.supabase.co';
+    const DEFAULT_SB_KEY = 'sb_publishable_SuGOU4wfA4vTygM_ROditw_Xo6gIykK';
+
     const CloudBackend = {
       client: null,
       init() {
-        if (!S.supabase || !S.supabase.url || !S.supabase.anonKey) return false;
+        const url = (S.supabase && S.supabase.url) || DEFAULT_SB_URL;
+        const key = (S.supabase && S.supabase.anonKey) || DEFAULT_SB_KEY;
+        if (!url || !key) return false;
         try {
           if (typeof supabase !== 'undefined' && supabase.createClient) {
-            this.client = supabase.createClient(S.supabase.url, S.supabase.anonKey);
+            this.client = supabase.createClient(url, key);
             return true;
           }
         } catch (e) {
@@ -1175,13 +1180,15 @@
         return false;
       },
       async testConnection() {
-        if (!this.init()) return { success: false, msg: 'Missing Supabase URL or Anon API Key.' };
+        if (!this.init()) return { success: false, msg: 'Missing Supabase URL or Publishable API Key.' };
         try {
           const t0 = performance.now();
           const { data, error } = await this.client.from('tide_profiles').select('id').limit(1);
           const latency = Math.round(performance.now() - t0);
-          if (error && error.code === '42P01') {
-            return { success: true, tableMissing: true, latency, msg: 'Connected to Supabase! (Tables need to be created via SQL Schema).' };
+          if (error && (error.code === '42P01' || error.code === 'PGRST205')) {
+            S.supabase.connected = true;
+            save();
+            return { success: true, tableMissing: true, latency, msg: `Connected to Supabase! (${latency}ms) Note: Run the SQL Schema in Supabase SQL Editor to initialize tables.` };
           }
           if (error) throw error;
           S.supabase.connected = true;
@@ -1196,7 +1203,7 @@
         if (!this.init()) return { success: false, msg: 'Configure Supabase credentials first.' };
         try {
           const prof = S.profile;
-          await this.client.from('tide_profiles').upsert({
+          const { error: profErr } = await this.client.from('tide_profiles').upsert({
             id: 'default_student',
             name: prof.name,
             handle: prof.handle,
@@ -1209,6 +1216,12 @@
             avatar_data: prof.avatar || {},
             updated_at: new Date().toISOString()
           });
+          if (profErr) {
+            if (profErr.code === 'PGRST205' || profErr.code === '42P01') {
+              return { success: false, msg: 'Tables missing in Supabase. Please copy and run the SQL Schema first.' };
+            }
+            throw profErr;
+          }
 
           if (S.tasks && S.tasks.length) {
             const taskRows = S.tasks.map(t => ({
@@ -1220,9 +1233,22 @@
               due_hour: t.dh,
               est_minutes: t.est,
               importance: t.imp,
-              first_step: t.fs
+              first_step: t.fs || ''
             }));
             await this.client.from('tide_tasks').upsert(taskRows);
+          }
+
+          if (S.blocks && S.blocks.length) {
+            const blockRows = S.blocks.map(b => ({
+              id: `${b.tid || 0}_${b.d}_${b.s}`,
+              task_id: b.tid || 1,
+              day_index: b.d,
+              slot_index: b.s,
+              duration_slots: b.n || 1,
+              is_done: !!b.done,
+              updated_at: new Date().toISOString()
+            }));
+            await this.client.from('tide_blocks').upsert(blockRows);
           }
 
           S.supabase.connected = true;
@@ -1231,6 +1257,54 @@
           return { success: true, msg: `Synced to Supabase Cloud at ${S.supabase.lastSync}` };
         } catch (e) {
           return { success: false, msg: e.message || 'Sync failed.' };
+        }
+      },
+      async pullFromCloud() {
+        if (!this.init()) return { success: false, msg: 'Configure Supabase credentials first.' };
+        try {
+          const { data: prof, error: profErr } = await this.client.from('tide_profiles').select('*').eq('id', 'default_student').maybeSingle();
+          if (profErr) {
+            if (profErr.code === 'PGRST205' || profErr.code === '42P01') {
+              return { success: false, msg: 'Tables missing in Supabase. Please run the SQL Schema first.' };
+            }
+            throw profErr;
+          }
+          if (prof) {
+            if (prof.name) S.profile.name = prof.name;
+            if (prof.handle) S.profile.handle = prof.handle;
+            if (prof.grade) S.profile.grade = prof.grade;
+            if (prof.school) S.profile.school = prof.school;
+            if (prof.motto) S.profile.motto = prof.motto;
+            if (prof.weekly_target) S.profile.weeklyTarget = prof.weekly_target;
+            if (prof.streak !== undefined) S.profile.streak = prof.streak;
+            if (prof.photo_url) S.profile.photo = prof.photo_url;
+            if (prof.avatar_data && typeof prof.avatar_data === 'object' && Object.keys(prof.avatar_data).length) {
+              S.profile.avatar = prof.avatar_data;
+            }
+          }
+
+          const { data: tasks, error: tasksErr } = await this.client.from('tide_tasks').select('*').eq('user_id', 'default_student');
+          if (tasksErr && tasksErr.code !== 'PGRST205' && tasksErr.code !== '42P01') throw tasksErr;
+          if (tasks && tasks.length) {
+            S.tasks = tasks.map(t => ({
+              id: Number(t.id),
+              t: t.title,
+              sub: t.subject || 'General',
+              due: t.due_day !== null ? t.due_day : 2,
+              dh: t.due_hour !== null ? t.due_hour : 18,
+              est: t.est_minutes || 60,
+              imp: t.importance || 1,
+              fs: t.first_step || ''
+            }));
+            replan();
+          }
+
+          S.supabase.connected = true;
+          S.supabase.lastSync = new Date().toLocaleTimeString();
+          save();
+          return { success: true, msg: `Cloud data loaded at ${S.supabase.lastSync}` };
+        } catch (e) {
+          return { success: false, msg: e.message || 'Pull failed.' };
         }
       }
     };
@@ -1343,8 +1417,9 @@
     }
     S.ev = events();
     if (!S.profile) S.profile = defaultProfile();
-    if (!S.profile.avatar) S.profile.avatar = defaultProfile().avatar;
-    if (!S.supabase) S.supabase = { url: '', anonKey: '', connected: false, lastSync: null };
+    if (!S.supabase) S.supabase = { url: DEFAULT_SB_URL, anonKey: DEFAULT_SB_KEY, connected: false, lastSync: null };
+    if (!S.supabase.url) S.supabase.url = DEFAULT_SB_URL;
+    if (!S.supabase.anonKey) S.supabase.anonKey = DEFAULT_SB_KEY;
 
     const save = () => {
       try {
@@ -1922,16 +1997,17 @@
               <div style="display:flex;flex-direction:column;gap:10px">
                 <label>
                   <span class="mut" style="font-size:11px;display:block;margin-bottom:3px">Supabase Project URL</span>
-                  <input type="text" id="sb-in-url" value="${S.supabase.url || ''}" placeholder="https://your-project.supabase.co">
+                  <input type="text" id="sb-in-url" value="${S.supabase.url || DEFAULT_SB_URL}" placeholder="https://your-project.supabase.co">
                 </label>
                 <label>
-                  <span class="mut" style="font-size:11px;display:block;margin-bottom:3px">Supabase Anon Public API Key</span>
-                  <input type="password" id="sb-in-key" value="${S.supabase.anonKey || ''}" placeholder="eyJh...">
+                  <span class="mut" style="font-size:11px;display:block;margin-bottom:3px">Supabase Publishable / Anon API Key</span>
+                  <input type="password" id="sb-in-key" value="${S.supabase.anonKey || DEFAULT_SB_KEY}" placeholder="sb_publishable_... or eyJh...">
                 </label>
 
-                <div class="row" style="margin-top:4px">
-                  <button class="btn pri" data-a="connectSupabase" style="font-size:13px;padding:9px 18px">🔗 Connect & Test Supabase</button>
-                  <button class="btn" data-a="syncSupabase" style="font-size:13px;padding:9px 18px">🔄 Sync Now</button>
+                <div class="row" style="margin-top:4px;flex-wrap:wrap;gap:8px">
+                  <button class="btn pri" data-a="connectSupabase" style="font-size:13px;padding:9px 16px">⚡ Connect & Test</button>
+                  <button class="btn" data-a="syncSupabase" style="font-size:13px;padding:9px 16px">☁️ Push to Cloud</button>
+                  <button class="btn" data-a="pullSupabase" style="font-size:13px;padding:9px 16px">📥 Pull from Cloud</button>
                   <button class="btn" data-a="copySqlSchema" style="font-size:13px;padding:9px 16px">📋 Copy SQL Schema</button>
                 </div>
                 ${S.supabase.lastSync ? `<span class="mut" style="font-size:11px">Last cloud sync: ${S.supabase.lastSync}</span>` : ''}
@@ -2405,9 +2481,9 @@
 
       /* SUPABASE BACKEND CONTROLS */
       async connectSupabase() {
-        const url = $('#sb-in-url').value.trim();
-        const key = $('#sb-in-key').value.trim();
-        if (!url || !key) return toast('Please enter Supabase URL and Anon Key');
+        const url = ($('#sb-in-url') ? $('#sb-in-url').value.trim() : '') || DEFAULT_SB_URL;
+        const key = ($('#sb-in-key') ? $('#sb-in-key').value.trim() : '') || DEFAULT_SB_KEY;
+        if (!url || !key) return toast('Please enter Supabase URL and Publishable Key');
 
         S.supabase.url = url;
         S.supabase.anonKey = key;
@@ -2417,7 +2493,9 @@
         const res = await CloudBackend.testConnection();
         if (res.success) {
           toast(res.msg);
-          await CloudBackend.syncToCloud();
+          if (!res.tableMissing) {
+            await CloudBackend.syncToCloud();
+          }
           route();
         } else {
           toast('⚠️ ' + res.msg);
@@ -2426,6 +2504,12 @@
       async syncSupabase() {
         toast('Syncing with Supabase Cloud...');
         const res = await CloudBackend.syncToCloud();
+        toast(res.success ? '✅ ' + res.msg : '⚠️ ' + res.msg);
+        route();
+      },
+      async pullSupabase() {
+        toast('Loading from Supabase Cloud...');
+        const res = await CloudBackend.pullFromCloud();
         toast(res.success ? '✅ ' + res.msg : '⚠️ ' + res.msg);
         route();
       },
@@ -2447,23 +2531,23 @@ create table if not exists public.tide_profiles (
 
 create table if not exists public.tide_tasks (
   id bigint primary key,
-  user_id text,
+  user_id text default 'default_student',
   title text not null,
   subject text,
   due_day integer,
   due_hour integer,
-  est_minutes integer,
-  importance integer,
-  first_step text,
+  est_minutes integer default 60,
+  importance integer default 1,
+  first_step text default '',
   created_at timestamp with time zone default now()
 );
 
 create table if not exists public.tide_blocks (
   id text primary key,
-  task_id bigint,
+  task_id bigint references public.tide_tasks(id) on delete cascade,
   day_index integer,
   slot_index integer,
-  duration_slots integer,
+  duration_slots integer default 1,
   is_done boolean default false,
   updated_at timestamp with time zone default now()
 );
@@ -2472,9 +2556,15 @@ alter table public.tide_profiles enable row level security;
 alter table public.tide_tasks enable row level security;
 alter table public.tide_blocks enable row level security;
 
-create policy "Public full access tide_profiles" on public.tide_profiles for all using (true);
-create policy "Public full access tide_tasks" on public.tide_tasks for all using (true);
-create policy "Public full access tide_blocks" on public.tide_blocks for all using (true);`;
+drop policy if exists "Public access tide_profiles" on public.tide_profiles;
+drop policy if exists "Public access tide_tasks" on public.tide_tasks;
+drop policy if exists "Public access tide_blocks" on public.tide_blocks;
+
+create policy "Public access tide_profiles" on public.tide_profiles for all using (true) with check (true);
+create policy "Public access tide_tasks" on public.tide_tasks for all using (true) with check (true);
+create policy "Public access tide_blocks" on public.tide_blocks for all using (true) with check (true);
+
+notify pgrst, 'reload schema';`;
 
         navigator.clipboard.writeText(sql).then(() => {
           toast('📋 SQL Schema copied to clipboard! Paste in Supabase SQL editor.');

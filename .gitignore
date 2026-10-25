@@ -1,3 +1,10 @@
+# Environment variables & secrets (CRITICAL: Never commit secrets)
+.env
+.env*.local
+.env.production
+.env.development
+!.env.example
+
 # Dependencies
 node_modules/
 

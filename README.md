@@ -40,16 +40,28 @@ Then visit:
 
 ---
 
+## 🗄️ Supabase Cloud Backend Setup
+
+1. Open your Supabase Dashboard: [https://supabase.com/dashboard/project/urgoewkatpxpccbixbwn](https://supabase.com/dashboard/project/urgoewkatpxpccbixbwn)
+2. Go to the **SQL Editor** on the left navigation bar.
+3. Click **New query**, paste the contents of [`supabase_schema.sql`](file:///e:/Microsoft%20prompt%20area/supabase_schema.sql), and click **Run**.
+4. That's it! Tables `tide_profiles`, `tide_tasks`, and `tide_blocks` will be created with Row Level Security enabled.
+5. In the app UI under **Student Profile**, click **⚡ Connect & Test** or **☁️ Push to Cloud** to sync!
+
+---
+
 ## 📁 Project Structure
 
 ```text
-├── index.html        # Main dashboard application entry point
-├── Tide.html         # Application markup & client script
-├── server.js         # Lightweight zero-dependency Node.js HTTP server
-├── package.json      # Project metadata & npm scripts
-├── three.min.js      # Three.js 3D rendering library
-├── supabase.min.js   # Supabase client SDK
-└── .gitignore        # Git ignore rules
+├── index.html            # Main dashboard application entry point
+├── Tide.html             # Application markup & client script
+├── server.js             # Lightweight zero-dependency Node.js HTTP server
+├── supabase_schema.sql   # Supabase SQL migration script
+├── package.json          # Project metadata & npm scripts
+├── three.min.js          # Three.js 3D rendering library
+├── supabase.min.js       # Supabase client SDK
+├── .env.example          # Environment variables template
+└── .gitignore            # Git ignore rules (protects .env)
 ```
 
 ---

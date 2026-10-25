@@ -2,6 +2,28 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+// Load environment variables from .env if present
+(function loadEnv() {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    try {
+      const content = fs.readFileSync(envPath, 'utf8');
+      content.split(/\r?\n/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          const k = trimmed.slice(0, eqIdx).trim();
+          const v = trimmed.slice(eqIdx + 1).trim();
+          if (!process.env[k]) process.env[k] = v;
+        }
+      });
+    } catch (e) {
+      console.warn('Could not load .env file:', e.message);
+    }
+  }
+})();
+
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || 'localhost';
 
@@ -25,6 +47,20 @@ const MIME_TYPES = {
 
 const server = http.createServer((req, res) => {
   let reqPath = decodeURI(req.url.split('?')[0]);
+
+  // Safe client configuration API (Only public/publishable credentials exposed)
+  if (reqPath === '/api/config') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store'
+    });
+    res.end(JSON.stringify({
+      supabaseUrl: process.env.SUPABASE_URL || 'https://urgoewkatpxpccbixbwn.supabase.co',
+      supabaseAnonKey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || 'sb_publishable_SuGOU4wfA4vTygM_ROditw_Xo6gIykK'
+    }));
+    return;
+  }
+
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/Tide.html';
   }
