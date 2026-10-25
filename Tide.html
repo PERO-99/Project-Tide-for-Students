@@ -1077,11 +1077,15 @@
   <!-- FIXED RESPONSIVE TOPBAR WITH LOGO ON HOME & BACK/HOME ON SUBPAGES -->
   <header id="topbar" class="glass">
     <div class="topbar-left">
-      <button class="nav-btn" data-a="back" title="Go back (Esc)" id="nav-btn-back">
+      <a href="#/" class="brand-logo" id="topbar-brand" title="Tide">
+        <span class="brand-icon">🌊</span>
+        <span class="brand-name">Tide</span>
+      </a>
+      <button class="nav-btn" data-a="back" title="Go back (Esc)" id="nav-btn-back" style="display:none">
         <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         <span>Back</span>
       </button>
-      <button class="nav-btn" data-a="home" title="Go to Home" id="nav-btn-home">
+      <button class="nav-btn" data-a="home" title="Go to Home" id="nav-btn-home" style="display:none">
         <svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
         <span>Home</span>
       </button>
@@ -1980,39 +1984,6 @@
               </div>
             </div>
 
-            <!-- SUPABASE CLOUD BACKEND INTEGRATION CARD -->
-            <div class="surface" id="cloud-settings-card">
-              <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
-                <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">
-                  ☁️ Supabase Cloud Backend
-                </h3>
-                <span class="ch" id="supabase-status-pill" style="font-size:11px;font-weight:600;background:${S.supabase.connected ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'};color:${S.supabase.connected ? '#10b981' : '#f59e0b'}">
-                  ${S.supabase.connected ? '🟢 Cloud Connected' : '🟡 Local Mode (Ready for API Key)'}
-                </span>
-              </div>
-              <p class="mut" style="font-size:12px;margin:0 0 12px">
-                Connect your Supabase project to sync your profile, tasks, 3D avatar, and timetable seamlessly across devices.
-              </p>
-
-              <div style="display:flex;flex-direction:column;gap:10px">
-                <label>
-                  <span class="mut" style="font-size:11px;display:block;margin-bottom:3px">Supabase Project URL</span>
-                  <input type="text" id="sb-in-url" value="${S.supabase.url || DEFAULT_SB_URL}" placeholder="https://your-project.supabase.co">
-                </label>
-                <label>
-                  <span class="mut" style="font-size:11px;display:block;margin-bottom:3px">Supabase Publishable / Anon API Key</span>
-                  <input type="password" id="sb-in-key" value="${S.supabase.anonKey || DEFAULT_SB_KEY}" placeholder="sb_publishable_... or eyJh...">
-                </label>
-
-                <div class="row" style="margin-top:4px;flex-wrap:wrap;gap:8px">
-                  <button class="btn pri" data-a="connectSupabase" style="font-size:13px;padding:9px 16px">⚡ Connect & Test</button>
-                  <button class="btn" data-a="syncSupabase" style="font-size:13px;padding:9px 16px">☁️ Push to Cloud</button>
-                  <button class="btn" data-a="pullSupabase" style="font-size:13px;padding:9px 16px">📥 Pull from Cloud</button>
-                  <button class="btn" data-a="copySqlSchema" style="font-size:13px;padding:9px 16px">📋 Copy SQL Schema</button>
-                </div>
-                ${S.supabase.lastSync ? `<span class="mut" style="font-size:11px">Last cloud sync: ${S.supabase.lastSync}</span>` : ''}
-              </div>
-            </div>
 
             <!-- Gamified Badges -->
             <div class="surface">
@@ -2124,13 +2095,18 @@
         routeHistory.push(p);
       }
 
-      // Topbar buttons active state
+      // Topbar buttons: on Home page, hide Back and Home buttons; show brand logo
       const backBtn = $('#nav-btn-back');
       const homeBtn = $('#nav-btn-home');
-      if (backBtn && homeBtn) {
-        backBtn.style.display = 'inline-flex';
-        homeBtn.style.display = 'inline-flex';
-        homeBtn.classList.toggle('on', isHome);
+      const brandLogo = $('#topbar-brand');
+      if (isHome) {
+        if (backBtn) backBtn.style.display = 'none';
+        if (homeBtn) homeBtn.style.display = 'none';
+        if (brandLogo) brandLogo.style.display = 'flex';
+      } else {
+        if (backBtn) backBtn.style.display = 'inline-flex';
+        if (homeBtn) homeBtn.style.display = 'inline-flex';
+        if (brandLogo) brandLogo.style.display = 'none';
       }
 
       const f = P[p] || P[''];
@@ -2477,100 +2453,6 @@
         save();
         toast('Profile reset to defaults');
         route();
-      },
-
-      /* SUPABASE BACKEND CONTROLS */
-      async connectSupabase() {
-        const url = ($('#sb-in-url') ? $('#sb-in-url').value.trim() : '') || DEFAULT_SB_URL;
-        const key = ($('#sb-in-key') ? $('#sb-in-key').value.trim() : '') || DEFAULT_SB_KEY;
-        if (!url || !key) return toast('Please enter Supabase URL and Publishable Key');
-
-        S.supabase.url = url;
-        S.supabase.anonKey = key;
-        save();
-
-        toast('Connecting to Supabase...');
-        const res = await CloudBackend.testConnection();
-        if (res.success) {
-          toast(res.msg);
-          if (!res.tableMissing) {
-            await CloudBackend.syncToCloud();
-          }
-          route();
-        } else {
-          toast('⚠️ ' + res.msg);
-        }
-      },
-      async syncSupabase() {
-        toast('Syncing with Supabase Cloud...');
-        const res = await CloudBackend.syncToCloud();
-        toast(res.success ? '✅ ' + res.msg : '⚠️ ' + res.msg);
-        route();
-      },
-      async pullSupabase() {
-        toast('Loading from Supabase Cloud...');
-        const res = await CloudBackend.pullFromCloud();
-        toast(res.success ? '✅ ' + res.msg : '⚠️ ' + res.msg);
-        route();
-      },
-      copySqlSchema() {
-        const sql = `-- Tide Student Planner Supabase Database Schema
-create table if not exists public.tide_profiles (
-  id text primary key,
-  name text,
-  handle text,
-  grade text,
-  school text,
-  motto text,
-  weekly_target integer default 25,
-  streak integer default 0,
-  photo_url text,
-  avatar_data jsonb default '{}'::jsonb,
-  updated_at timestamp with time zone default now()
-);
-
-create table if not exists public.tide_tasks (
-  id bigint primary key,
-  user_id text default 'default_student',
-  title text not null,
-  subject text,
-  due_day integer,
-  due_hour integer,
-  est_minutes integer default 60,
-  importance integer default 1,
-  first_step text default '',
-  created_at timestamp with time zone default now()
-);
-
-create table if not exists public.tide_blocks (
-  id text primary key,
-  task_id bigint references public.tide_tasks(id) on delete cascade,
-  day_index integer,
-  slot_index integer,
-  duration_slots integer default 1,
-  is_done boolean default false,
-  updated_at timestamp with time zone default now()
-);
-
-alter table public.tide_profiles enable row level security;
-alter table public.tide_tasks enable row level security;
-alter table public.tide_blocks enable row level security;
-
-drop policy if exists "Public access tide_profiles" on public.tide_profiles;
-drop policy if exists "Public access tide_tasks" on public.tide_tasks;
-drop policy if exists "Public access tide_blocks" on public.tide_blocks;
-
-create policy "Public access tide_profiles" on public.tide_profiles for all using (true) with check (true);
-create policy "Public access tide_tasks" on public.tide_tasks for all using (true) with check (true);
-create policy "Public access tide_blocks" on public.tide_blocks for all using (true) with check (true);
-
-notify pgrst, 'reload schema';`;
-
-        navigator.clipboard.writeText(sql).then(() => {
-          toast('📋 SQL Schema copied to clipboard! Paste in Supabase SQL editor.');
-        }).catch(() => {
-          toast('Failed to copy. Check permissions.');
-        });
       }
     };
 

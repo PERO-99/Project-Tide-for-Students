@@ -45,8 +45,7 @@ Then visit:
 1. Open your Supabase Dashboard: [https://supabase.com/dashboard/project/urgoewkatpxpccbixbwn](https://supabase.com/dashboard/project/urgoewkatpxpccbixbwn)
 2. Go to the **SQL Editor** on the left navigation bar.
 3. Click **New query**, paste the contents of [`supabase_schema.sql`](file:///e:/Microsoft%20prompt%20area/supabase_schema.sql), and click **Run**.
-4. That's it! Tables `tide_profiles`, `tide_tasks`, and `tide_blocks` will be created with Row Level Security enabled.
-5. In the app UI under **Student Profile**, click **⚡ Connect & Test** or **☁️ Push to Cloud** to sync!
+4. Tables `tide_profiles`, `tide_tasks`, and `tide_blocks` will be initialized with Row Level Security enabled.
 
 ---
 
